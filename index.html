@@ -23,6 +23,9 @@
             text-align: center;
             width: 300px;
         }
+        .hidden {
+            display: none !important;
+        }
         h1 {
             margin-top: 0;
             color: #e94560;
@@ -71,23 +74,153 @@
             margin: 20px 0;
             border-bottom: 2px solid #0f3460;
         }
+        .player-list {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+            text-align: left;
+        }
+        .player-list li {
+            background-color: #0f3460;
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
 
-    <div class="container">
+    <div id="startScreen" class="container">
         <h1>Imposter</h1>
         <p>Who is hiding in plain sight?</p>
         
         <input type="text" id="playerName" placeholder="Enter your name" autocomplete="off">
         
-        <button onclick="alert('This will create a room in Phase 2!')">Create New Game</button>
+        <button id="createBtn">Create New Game</button>
         
         <div class="divider"></div>
         
-        <input type="text" id="roomCode" placeholder="Enter 4-digit room code" autocomplete="off" maxlength="4">
-        <button onclick="alert('This will join a room in Phase 2!')">Join Game</button>
+        <input type="text" id="roomCodeInput" placeholder="Enter 4-digit room code" autocomplete="off" maxlength="4">
+        <button id="joinBtn">Join Game</button>
+        
+        <p id="errorMessage" style="color: #ff6b6b; margin-top: 15px; display: none;"></p>
     </div>
 
+    <div id="lobbyScreen" class="container hidden">
+        <h1 style="font-size: 2em;">Room: <span id="displayRoomCode" style="color: white;"></span></h1>
+        <p>Waiting for players...</p>
+        
+        <ul id="playerList" class="player-list">
+            </ul>
+        
+        <button id="startGameBtn">Start Game</button>
+    </div>
+
+    <script type="module">
+        // 1. Import Firebase from the CDN
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+        import { getDatabase, ref, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js";
+
+        // 2. Your specific configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyD7P2xRacaPxA7HjOh7wDHZ6vMZpcFhgbM",
+            authDomain: "crazy-impostor-game.firebaseapp.com",
+            databaseURL: "https://crazy-impostor-game-default-rtdb.firebaseio.com", 
+            projectId: "crazy-impostor-game",
+            storageBucket: "crazy-impostor-game.firebasestorage.app",
+            messagingSenderId: "508771155615",
+            appId: "1:508771155615:web:775d5b8988f71fc37a2caa"
+        };
+
+        // 3. Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // 4. HTML Elements
+        const startScreen = document.getElementById('startScreen');
+        const lobbyScreen = document.getElementById('lobbyScreen');
+        const playerNameInput = document.getElementById('playerName');
+        const roomCodeInput = document.getElementById('roomCodeInput');
+        const displayRoomCode = document.getElementById('displayRoomCode');
+        const playerListElement = document.getElementById('playerList');
+        const errorMessage = document.getElementById('errorMessage');
+
+        let currentRoom = "";
+        let currentPlayerName = "";
+
+        // --- Helper function to show errors ---
+        function showError(msg) {
+            errorMessage.innerText = msg;
+            errorMessage.style.display = 'block';
+            setTimeout(() => { errorMessage.style.display = 'none'; }, 3000);
+        }
+
+        // --- CREATE GAME LOGIC ---
+        document.getElementById('createBtn').addEventListener('click', () => {
+            const name = playerNameInput.value.trim();
+            if (!name) return showError("Please enter your name!");
+
+            // Generate a random 4-digit code
+            const code = Math.floor(1000 + Math.random() * 9000).toString();
+            
+            // Create the room in Firebase
+            set(ref(db, 'rooms/' + code + '/players/' + name), {
+                isHost: true
+            }).then(() => {
+                enterLobby(code, name);
+            });
+        });
+
+        // --- JOIN GAME LOGIC ---
+        document.getElementById('joinBtn').addEventListener('click', () => {
+            const name = playerNameInput.value.trim();
+            const code = roomCodeInput.value.trim();
+            
+            if (!name) return showError("Please enter your name!");
+            if (code.length !== 4) return showError("Room code must be 4 digits!");
+
+            // Check if room exists in Firebase
+            get(ref(db, 'rooms/' + code)).then((snapshot) => {
+                if (snapshot.exists()) {
+                    // Add player to the room
+                    set(ref(db, 'rooms/' + code + '/players/' + name), {
+                        isHost: false
+                    }).then(() => {
+                        enterLobby(code, name);
+                    });
+                } else {
+                    showError("Room not found!");
+                }
+            });
+        });
+
+        // --- ENTER LOBBY & LISTEN FOR OTHERS ---
+        function enterLobby(code, name) {
+            currentRoom = code;
+            currentPlayerName = name;
+            
+            // Switch screens
+            startScreen.classList.add('hidden');
+            lobbyScreen.classList.remove('hidden');
+            displayRoomCode.innerText = code;
+
+            // Listen to the database for any new players joining this room
+            const playersRef = ref(db, 'rooms/' + code + '/players');
+            onValue(playersRef, (snapshot) => {
+                const data = snapshot.val();
+                playerListElement.innerHTML = ''; // Clear the list
+                
+                if (data) {
+                    // Loop through all players and add them to the screen
+                    Object.keys(data).forEach(playerName => {
+                        const li = document.createElement('li');
+                        li.innerText = playerName + (data[playerName].isHost ? " 👑" : "");
+                        playerListElement.appendChild(li);
+                    });
+                }
+            });
+        }
+    </script>
 </body>
 </html>
